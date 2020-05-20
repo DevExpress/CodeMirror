@@ -348,6 +348,57 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
     return undefined;
   }
 
+  function findBoldSegment(boldStart, ignoreUnderscore) {
+    var boldSegment = '';
+    var nextChar;
+    var index = 0;
+    var segmentTailFound = false;
+    do {
+            var char = boldStart[index];
+            boldSegment += char;
+            if(boldSegment.length < boldStart.length) {
+                index += 1;
+                nextChar = boldStart[index];
+            } else {
+                nextChar = null;
+            }
+            if(char === nextChar && (char === '*' || (char === '_' && !ignoreUnderscore))) {
+                segmentTailFound = true;
+            }
+        } while(nextChar && !(segmentTailFound && nextChar === ' '));
+        return boldSegment;
+    }
+
+  function findItalicSegment(italicStart, ignoreUnderscore) {
+        var italicSegment = '';
+        var nextChar;
+        var index = 0;
+        var segmentTailFound = false;
+        var insideBold = false;
+        do {
+            var char = italicStart[index];
+            italicSegment += char;
+            if(italicSegment.length < italicStart.length) {
+                index += 1;
+                nextChar = italicStart[index];
+            } else {
+                nextChar = null;
+            }
+            if(insideBold && (nextChar === '*' || (nextChar === '_' && !ignoreUnderscore))) {
+                segmentTailFound = true;
+            } else {
+                if(char === '*' || (char === '_' && !ignoreUnderscore)) {
+                    if(nextChar === '*' || (nextChar === '_' && !ignoreUnderscore)) {
+                        insideBold = true;
+                    } else {
+                        segmentTailFound |= !insideBold;
+                    }
+                }
+            }
+        } while(nextChar && !(segmentTailFound && nextChar === ' '));
+        return italicSegment;
+    }
+
   function inlineNormal(stream, state) {
     var style = state.text(stream, state);
     if (typeof style !== 'undefined')
@@ -530,8 +581,9 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
         return t;
       } else if (!state.strong && stream.eat(ch)) { // Add STRONG
         var boldStart = stream.string.substring(stream.pos);
-        var firstChar = boldStart.replace(/[\*|\_]/g, '')[0];
-        if (!firstChar || firstChar === ' ' || boldStart.indexOf(' **') !== -1 || (boldStart.indexOf(' __') !== -1 && !ignoreUnderscore)) {
+        var boldSegment = findBoldSegment(boldStart, ignoreUnderscore);
+        var firstChar = boldSegment.replace(/[\*|\_]/g, '')[0];
+        if(!firstChar || firstChar === ' ' || boldSegment.indexOf(' **') !== -1 || (boldSegment.indexOf(' __') !== -1 && !ignoreUnderscore)) {
           state.strong = false;
         } else {
           state.strong = ch;
@@ -545,8 +597,9 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
         return t;
       } else if (!state.em) { // Add EM
         var italicStart = stream.string.substring(stream.pos);
-        var firstItalicChar = italicStart.replace(/[\*|\_]/g, '')[0];
-        if (!firstItalicChar || firstItalicChar === ' ' || italicStart.indexOf(' *') !== -1 || (italicStart.indexOf(' _') !== -1 && !ignoreUnderscore)) {
+        var italicSegment = findItalicSegment(italicStart, ignoreUnderscore);
+        var firstItalicChar = italicSegment.replace(/[\*|\_]/g, '')[0];
+        if (!firstItalicChar || firstItalicChar === ' ' || italicSegment.indexOf(' *') !== -1 || (italicSegment.indexOf(' _') !== -1 && !ignoreUnderscore)) {
           state.em = false;
         } else {
           state.em = ch;
