@@ -348,6 +348,57 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
     return undefined;
   }
 
+  function findBoldSegment(boldStart, ignoreUnderscore) {
+    var boldSegment = '';
+    var nextChar;
+    var index = 0;
+    var segmentTailFound = false;
+    do {
+            var char = boldStart[index];
+            boldSegment += char;
+            if(boldSegment.length < boldStart.length) {
+                index += 1;
+                nextChar = boldStart[index];
+            } else {
+                nextChar = null;
+            }
+            if(char === nextChar && (char === '*' || (char === '_' && !ignoreUnderscore))) {
+                segmentTailFound = true;
+            }
+        } while(nextChar && !(segmentTailFound && nextChar === ' '));
+        return boldSegment;
+    }
+
+  function findItalicSegment(italicStart, ignoreUnderscore) {
+        var italicSegment = '';
+        var nextChar;
+        var index = 0;
+        var segmentTailFound = false;
+        var insideBold = false;
+        do {
+            var char = italicStart[index];
+            italicSegment += char;
+            if(italicSegment.length < italicStart.length) {
+                index += 1;
+                nextChar = italicStart[index];
+            } else {
+                nextChar = null;
+            }
+            if(insideBold && (nextChar === '*' || (nextChar === '_' && !ignoreUnderscore))) {
+                segmentTailFound = true;
+            } else {
+                if(char === '*' || (char === '_' && !ignoreUnderscore)) {
+                    if(nextChar === '*' || (nextChar === '_' && !ignoreUnderscore)) {
+                        insideBold = true;
+                    } else {
+                        segmentTailFound |= !insideBold;
+                    }
+                }
+            }
+        } while(nextChar && !(segmentTailFound && nextChar === ' '));
+        return italicSegment;
+    }
+
   function inlineNormal(stream, state) {
     var style = state.text(stream, state);
     if (typeof style !== 'undefined')
@@ -517,13 +568,27 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
       if (sol && stream.peek() === ' ') {
         // Do nothing, surrounded by newline and space
       } else if (state.strong === ch && stream.eat(ch)) { // Remove STRONG
-        if (modeCfg.highlightFormatting) state.formatting = "strong";
-        var t = getType(state);
-        state.strong = false;
+        var boldEnd = stream.string.substring(stream.start - 1, stream.start);
+        var t;
+        if (boldEnd === ' ') {
+          state.strong = false;
+          t = getType(state);
+        } else {
+          if (modeCfg.highlightFormatting) state.formatting = "strong";
+          t = getType(state);
+          state.strong = false;
+        }
         return t;
       } else if (!state.strong && stream.eat(ch)) { // Add STRONG
-        state.strong = ch;
-        if (modeCfg.highlightFormatting) state.formatting = "strong";
+        var boldStart = stream.string.substring(stream.pos);
+        var boldSegment = findBoldSegment(boldStart, ignoreUnderscore);
+        var firstChar = boldSegment.replace(/[\*|\_]/g, '')[0];
+        if(!firstChar || firstChar === ' ' || boldSegment.indexOf(' **') !== -1 || (boldSegment.indexOf(' __') !== -1 && !ignoreUnderscore)) {
+          state.strong = false;
+        } else {
+          state.strong = ch;
+          if (modeCfg.highlightFormatting) state.formatting = "strong";
+        }
         return getType(state);
       } else if (state.em === ch) { // Remove EM
         if (modeCfg.highlightFormatting) state.formatting = "em";
@@ -531,8 +596,15 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
         state.em = false;
         return t;
       } else if (!state.em) { // Add EM
-        state.em = ch;
-        if (modeCfg.highlightFormatting) state.formatting = "em";
+        var italicStart = stream.string.substring(stream.pos);
+        var italicSegment = findItalicSegment(italicStart, ignoreUnderscore);
+        var firstItalicChar = italicSegment.replace(/[\*|\_]/g, '')[0];
+        if (!firstItalicChar || firstItalicChar === ' ' || italicSegment.indexOf(' *') !== -1 || (italicSegment.indexOf(' _') !== -1 && !ignoreUnderscore)) {
+          state.em = false;
+        } else {
+          state.em = ch;
+          if (modeCfg.highlightFormatting) state.formatting = "em";
+        }
         return getType(state);
       }
     } else if (ch === ' ') {
